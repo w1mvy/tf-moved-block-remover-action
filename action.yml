@@ -1,0 +1,42 @@
+name: 'tf-moved-block-remover-action'
+inputs:
+  target_dir:
+    description: 'Directory to define terraform resources'
+    required: false
+    default: '.'
+  branch_name:
+    required: false
+    default: "tf-moved-block-remover"
+  token:
+    description: 'A GitHub PAT'
+    required: true
+  message:
+    required: false
+    default: "[tf-moved-block-remover] removed moved block by action"
+runs:
+  using: "composite"
+  steps:
+    - run: |
+        # nothing todo, if pull-request is opened
+        if [ `gh pr list -s open -S "title:[tf-moved-block-remover].*" --json "number" --jq "length"` -gt 0 ]; then
+          echo "nothing todo, already exsits pull-request."
+          exit 0
+        fi
+        find ${{ inputs.target_dir }} -type f -name "*.tf" -exec sed -i -e '/moved/,/}/d' {} \;
+        for filename in `git diff --name-only`; do
+          fname=`basename $filename`
+          cat -s $filename > /tmp/$fname
+          mv /tmp/$fname $filename
+        done
+        if [ `git diff | wc -l` -gt 0 ]; then
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git switch -c ${{ inputs.branch_name }}
+          git add .
+          git commit -m "${{ inputs.message }}"
+          git push origin ${{ inputs.branch_name }}
+          gh pr create --title "${{ inputs.message }}" --body "actions url: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+        fi
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
